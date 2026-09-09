@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Net dealer gamma by strike and expiry, computed from CBOE delayed option chains.">
+<meta name="color-scheme" content="dark">
+<meta name="robots" content="noindex">
+<title>GEX Heatmap</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400;1,6..72,500&family=Spline+Sans:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #0B0E15; --panel: #10141D; --line: rgba(203,213,235,0.08); --line-strong: rgba(203,213,235,0.14);
+    --text: #E9EDF5; --mut: #98A1B3; --faint: #5C6579; --accent: #D9A85C; --neg: #7AA2E8;
+    --serif: 'Newsreader', Georgia, serif; --sans: 'Spline Sans', system-ui, sans-serif;
+    --mono: 'Spline Sans Mono', ui-monospace, Consolas, monospace;
+  }
+  html { background: var(--bg); scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 28px 30px 24px; display: flex; flex-direction: column; gap: 18px; }
+  .label { font-size: 10px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .hdr { display: flex; justify-content: space-between; align-items: flex-end; gap: 18px; flex-wrap: wrap; }
+  .wordmark { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 30px; line-height: 1; }
+  .wordmark .a { color: var(--accent); }
+  .nav { display: flex; gap: 8px; flex-wrap: wrap; }
+  .nav a { font-family: var(--mono); font-size: 12px; color: var(--mut); text-decoration: none;
+    border: 1px solid var(--line-strong); border-radius: 999px; padding: 6px 13px; }
+  .nav a:hover { color: var(--text); border-color: rgba(203,213,235,0.3); }
+  .nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  .scale { width: 200px; height: 10px; border-radius: 5px;
+    background: linear-gradient(to right, rgba(122,162,232,0.95), rgba(122,162,232,0.15), rgba(203,213,235,0.05), rgba(217,168,92,0.15), rgba(217,168,92,0.95)); }
+  .legend .t { font-size: 11.5px; color: var(--mut); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 16px; }
+  .shead { display: flex; justify-content: space-between; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .tkr { display: flex; align-items: baseline; gap: 12px; }
+  .tkr .s { font-family: var(--mono); font-size: 24px; font-weight: 600; }
+  .tkr .p { font-family: var(--mono); font-size: 14px; color: var(--mut); }
+  .facts { display: flex; gap: 20px; flex-wrap: wrap; }
+  .fact { display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+  .fact .v { font-family: var(--mono); font-size: 13px; }
+  .gridwrap { overflow-x: auto; }
+  .grid { min-width: 700px; display: flex; flex-direction: column; gap: 2px; }
+  .row { display: flex; gap: 2px; align-items: stretch; border-radius: 4px; }
+  .row.spot { outline: 1px solid rgba(233,237,245,0.4); outline-offset: 1px; }
+  .klabel { width: 66px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end;
+    font-family: var(--mono); font-size: 11px; color: var(--mut); padding-right: 8px; }
+  .klabel.flip { color: var(--accent); border-bottom: 1px dashed rgba(217,168,92,0.6); }
+  .cell { flex: 1; height: 21px; border-radius: 3px; min-width: 40px; }
+  .cell:hover { outline: 1px solid rgba(233,237,245,0.6); }
+  .ehead { display: flex; gap: 2px; }
+  .ehead .klabel { visibility: hidden; }
+  .eh { flex: 1; min-width: 40px; display: flex; flex-direction: column; align-items: center; gap: 1px; padding-bottom: 4px; }
+  .eh .d { font-family: var(--mono); font-size: 10.5px; color: var(--mut); }
+  .eh .iv { font-family: var(--mono); font-size: 9.5px; color: var(--faint); }
+  details { border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { font-size: 11px; color: var(--faint); cursor: pointer; }
+  summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .dtable { overflow-x: auto; margin-top: 10px; }
+  .dtable table { border-collapse: collapse; }
+  .dtable th, .dtable td { font-family: var(--mono); font-size: 10.5px; padding: 3px 8px; text-align: right;
+    border-bottom: 1px solid var(--line); color: var(--mut); white-space: nowrap; }
+  .dtable th { color: var(--faint); }
+  #tip { position: fixed; pointer-events: none; background: #171D2A; border: 1px solid var(--line-strong);
+    border-radius: 8px; padding: 8px 11px; font-family: var(--mono); font-size: 11.5px; color: var(--text);
+    display: none; z-index: 10; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+  .foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 10px; color: var(--faint); }
+  .notice { font-size: 11.5px; color: var(--mut); background: rgba(122,162,232,0.07); border: 1px solid rgba(122,162,232,0.25);
+    border-radius: 8px; padding: 10px 12px; text-wrap: pretty; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="hdr">
+    <div style="display:flex; flex-direction:column; gap:6px">
+      <div class="wordmark">GEX <span class="a">Heatmap</span></div>
+      <div class="label">Net dealer gamma by strike × expiry · CBOE delayed chains · computed 25 Aug 2026</div>
+    </div>
+    <nav class="nav" id="nav" aria-label="Jump to name"></nav>
+  </div>
+
+  <div class="legend">
+    <div class="scale" role="img" aria-label="Color scale from short gamma (blue) through neutral to long gamma (gold)"></div>
+    <div class="t"><span style="color:var(--neg)">◼</span> short gamma — dealers amplify moves</div>
+    <div class="t"><span style="color:var(--accent)">◼</span> long gamma — dealers dampen moves</div>
+    <div class="t">cell = net γ·OI dollar gamma per 1% move (US$M), calls +, puts −. Hover any cell for the exact figure; shading scaled per name.</div>
+  </div>
+
+  <div class="notice" id="notice"></div>
+
+  <div id="sections" style="display:flex; flex-direction:column; gap:18px"></div>
+
+  <div class="foot">
+    <div>Method: per-contract gamma × open interest × 100 × spot² × 1% from CBOE's delayed chain; flip = zero-crossing of Black-Scholes-recomputed net gamma across shifted spots. OI updates end-of-day.</div>
+    <div>Refreshed by republish · Decision-support only — not personal advice</div>
+  </div>
+</div>
+<div id="tip" role="status"></div>
+
+<script>
+(function () {
+  'use strict';
+  var DATA = {"NVDA":{"spot":225.35,"netBn":1.63,"asof":"2026-09-08","sign_ok":true,"flip":207.0,"wallPos":[230.0,366.0],"wallNeg":[222.5,-41.0],"rr25":-2.2,"rr25_expiry":"2026-10-09","bucket":5,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-21","2026-09-23","2026-09-25"],"atmIv":[35.3,37.0,31.1,33.2,34.6,32.4,33.3,33.9],"strikes":[250,245,240,235,230,225,220,215,210,205,200],"grid":[[1.89,6.09,0.67,0.53,35.7,0.03,0.03,5.25],[1.97,4.89,2.12,3.0,21.85,0.11,0.03,8.73],[24.38,77.5,2.06,2.27,83.69,0.43,1.2,14.11],[32.53,73.32,17.68,11.7,51.85,0.35,0.09,9.99],[183.12,261.83,20.79,2.39,90.95,0.44,3.42,10.98],[-45.22,10.04,-2.22,0.62,51.25,0.23,0.49,11.05],[-54.83,-69.45,-2.31,-0.67,26.43,-0.25,-0.06,-6.2],[-3.93,-9.39,-1.72,-0.47,8.41,-0.04,-0.1,-3.02],[-2.92,-13.82,-0.13,-0.58,-1.5,0.0,-0.04,-6.12],[-0.59,-2.47,-0.1,-0.92,-0.45,-0.01,-0.02,-2.06],[-1.14,-2.7,-0.09,-0.25,-3.54,-0.48,-0.01,-3.14]],"straddles":{"2026-09-09":{"strike":225.0,"straddle":3.41,"em_pct":1.5},"2026-09-11":{"strike":225.0,"straddle":6.08,"em_pct":2.7},"2026-09-14":{"strike":225.0,"straddle":7.25,"em_pct":3.2},"2026-09-16":{"strike":225.0,"straddle":8.93,"em_pct":4.0},"2026-09-18":{"strike":225.0,"straddle":10.35,"em_pct":4.6},"2026-09-21":{"strike":225.0,"straddle":11.18,"em_pct":5.0},"2026-09-23":{"strike":225.0,"straddle":12.55,"em_pct":5.6},"2026-09-25":{"strike":225.0,"straddle":13.25,"em_pct":5.9}}},"MSFT":{"spot":493.23,"netBn":1.42,"asof":"2026-09-08","sign_ok":true,"flip":428.0,"wallPos":[510.0,168.0],"wallNeg":[475.0,-18.0],"rr25":-2.7,"rr25_expiry":"2026-10-09","bucket":10,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-25","2026-10-02","2026-10-09"],"atmIv":[27.3,29.1,23.5,24.4,25.9,25.3,24.9,25.0],"strikes":[560,550,540,530,520,510,500,490,480,470,460,450,440,430],"grid":[[0.0,0.39,0.0,0.0,0.22,2.52,0.21,0.11],[0.01,0.14,0.0,0.0,5.16,1.66,13.9,0.75],[0.1,0.94,0.11,0.07,15.11,2.65,4.03,1.11],[0.15,1.89,0.14,0.08,22.31,18.28,4.07,0.33],[1.79,12.7,0.48,0.57,82.83,7.15,3.17,3.99],[4.95,24.93,0.26,0.46,47.89,0.93,2.53,-0.06],[11.03,-5.99,-0.96,0.87,78.67,-1.99,45.06,2.0],[-13.4,-13.38,-0.84,-1.77,4.02,-0.81,-1.69,-0.05],[-5.29,-17.83,-1.35,-0.48,4.26,-2.73,-0.13,-0.73],[-0.42,-1.14,-0.1,-0.1,22.14,-0.44,-0.61,-0.21],[-0.05,-1.45,-0.05,-0.21,-8.92,-1.85,-1.11,-0.45],[-0.0,-0.31,-0.01,-0.08,6.81,-2.23,-0.64,-0.09],[-0.0,-0.22,-0.02,-0.03,0.88,-0.89,-0.4,-0.4],[0.0,-0.08,0.0,0.0,2.86,-0.07,-0.05,-0.0]],"straddles":{"2026-09-09":{"strike":492.5,"straddle":5.83,"em_pct":1.2},"2026-09-11":{"strike":492.5,"straddle":10.7,"em_pct":2.2},"2026-09-14":{"strike":495.0,"straddle":12.15,"em_pct":2.5},"2026-09-16":{"strike":495.0,"straddle":14.55,"em_pct":2.9},"2026-09-18":{"strike":492.5,"straddle":17.27,"em_pct":3.5},"2026-09-25":{"strike":495.0,"straddle":22.02,"em_pct":4.5},"2026-10-02":{"strike":495.0,"straddle":25.68,"em_pct":5.2},"2026-10-09":{"strike":495.0,"straddle":29.3,"em_pct":5.9}}},"AAPL":{"spot":316.35,"netBn":0.9,"asof":"2026-09-08","sign_ok":true,"flip":293.0,"wallPos":[330.0,166.0],"wallNeg":[280.0,-22.0],"rr25":-2.1,"rr25_expiry":"2026-10-09","bucket":5,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-25","2026-10-02","2026-10-09"],"atmIv":[46.7,38.4,30.9,29.6,29.3,27.3,26.1,26.1],"strikes":[355,350,345,340,335,330,325,320,315,310,305,300,295,290,285,280],"grid":[[0.03,0.56,0.03,0.13,2.6,0.39,0.57,0.07],[0.31,1.53,0.12,0.06,20.64,1.71,1.03,0.37],[0.46,1.69,0.22,0.34,7.9,1.79,5.01,3.18],[4.93,6.34,0.64,0.8,27.52,4.15,4.9,0.87],[1.91,7.32,1.73,0.3,22.75,7.32,2.04,0.22],[29.55,42.28,4.29,1.12,47.8,4.04,2.35,0.25],[17.45,27.63,2.18,-0.63,36.18,3.0,2.0,0.53],[37.03,28.87,0.82,0.05,55.21,2.97,1.41,0.13],[-11.77,2.2,-0.49,0.09,6.79,0.28,0.62,-0.08],[-20.95,-24.32,-0.53,-0.29,21.34,0.3,2.07,-0.15],[-2.76,-4.35,-0.41,-0.08,15.38,-1.5,-1.67,-0.56],[-1.7,-10.89,-0.3,-0.11,-16.52,-0.95,-1.74,-0.55],[-0.59,0.3,-0.1,-0.01,-1.5,-0.83,-1.04,-0.09],[-0.09,-1.31,-0.02,-0.01,-3.48,-0.58,-0.71,-0.22],[-0.01,-0.22,-0.0,-0.05,-2.53,-0.29,-0.37,-0.09],[-0.0,-0.3,-0.0,0.0,-1.47,-0.28,-0.15,-0.07]],"straddles":{"2026-09-09":{"strike":317.5,"straddle":6.4,"em_pct":2.0},"2026-09-11":{"strike":317.5,"straddle":8.97,"em_pct":2.8},"2026-09-14":{"strike":315.0,"straddle":10.22,"em_pct":3.2},"2026-09-16":{"strike":315.0,"straddle":11.6,"em_pct":3.7},"2026-09-18":{"strike":317.5,"straddle":12.55,"em_pct":4.0},"2026-09-25":{"strike":315.0,"straddle":15.0,"em_pct":4.7},"2026-10-02":{"strike":315.0,"straddle":17.3,"em_pct":5.5},"2026-10-09":{"strike":315.0,"straddle":19.52,"em_pct":6.2}}},"AMZN":{"spot":256.61,"netBn":0.56,"asof":"2026-09-08","sign_ok":true,"flip":240.0,"wallPos":[275.0,88.0],"wallNeg":[240.0,-31.0],"rr25":-1.0,"rr25_expiry":"2026-10-09","bucket":5,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-25","2026-10-02","2026-10-09"],"atmIv":[31.5,33.0,27.2,30.8,31.2,30.8,30.4,30.4],"strikes":[290,285,280,275,270,265,260,255,250,245,240,235,230,225],"grid":[[0.0,0.03,0.0,0.0,0.0,0.0,0.0,0.0],[0.02,0.14,0.0,0.0,6.24,1.23,3.0,0.49],[0.16,1.57,0.08,0.13,24.96,1.64,0.94,0.66],[0.42,4.43,0.09,0.09,13.64,4.01,1.15,0.72],[4.04,28.31,0.5,0.24,29.91,2.1,2.47,0.16],[6.9,18.6,2.24,0.34,26.8,1.18,1.01,0.15],[0.76,39.32,0.36,0.42,26.25,1.1,1.49,0.16],[5.54,-0.14,0.22,-0.06,2.36,-1.5,0.13,-0.01],[-0.98,-13.78,-0.84,-0.24,-1.82,-3.56,-2.68,-0.3],[-0.07,-2.37,-0.16,-0.09,6.76,-1.27,-1.15,-0.41],[-0.1,-4.74,-0.1,-0.05,-6.77,-4.32,-4.97,-0.58],[-0.0,-0.88,-0.01,-0.09,-1.84,-0.57,-0.82,-0.26],[0.0,-0.53,-0.0,-0.0,-3.08,-0.4,-0.36,-0.15],[-0.0,-0.05,-0.0,-0.0,-1.33,-0.17,-0.2,-0.06]],"straddles":{"2026-09-09":{"strike":257.5,"straddle":3.45,"em_pct":1.3},"2026-09-11":{"strike":257.5,"straddle":6.25,"em_pct":2.4},"2026-09-14":{"strike":255.0,"straddle":7.49,"em_pct":2.9},"2026-09-16":{"strike":255.0,"straddle":9.35,"em_pct":3.6},"2026-09-18":{"strike":257.5,"straddle":10.57,"em_pct":4.1},"2026-09-25":{"strike":255.0,"straddle":13.8,"em_pct":5.4},"2026-10-02":{"strike":255.0,"straddle":16.2,"em_pct":6.3},"2026-10-09":{"strike":255.0,"straddle":18.42,"em_pct":7.2}}},"META":{"spot":614.6,"netBn":1.23,"asof":"2026-09-08","sign_ok":true,"flip":534.0,"wallPos":[700.0,168.0],"wallNeg":[550.0,-27.0],"rr25":1.4,"rr25_expiry":"2026-10-09","bucket":10,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-25","2026-10-02","2026-10-09"],"atmIv":[45.1,43.9,36.2,39.1,39.5,39.1,38.4,38.3],"strikes":[690,680,670,660,650,640,630,620,610,600,590,580,570,560,550,540],"grid":[[0.02,0.32,0.0,0.0,2.14,0.32,0.11,0.1],[0.04,0.85,0.0,0.0,12.55,0.94,0.6,0.4],[0.07,1.31,0.0,0.0,15.91,0.38,0.29,0.81],[0.75,6.47,0.36,0.0,16.68,2.64,1.22,1.35],[2.89,6.44,0.25,0.0,25.61,4.13,1.3,0.27],[8.49,29.67,1.27,1.83,14.63,4.77,4.13,0.38],[10.9,18.21,0.11,0.12,10.82,1.17,1.28,0.14],[53.07,28.84,2.71,0.58,32.35,11.95,4.08,0.81],[12.69,7.18,1.27,0.2,5.94,1.13,0.12,0.07],[1.4,62.47,0.56,0.7,35.44,7.37,3.01,-0.17],[-3.58,-2.97,0.08,-0.79,4.17,0.73,0.36,-0.05],[-1.79,-1.06,0.05,-0.21,-3.05,0.64,0.62,0.78],[-0.24,-0.83,-0.01,-0.41,-2.61,0.06,0.26,0.16],[-0.24,-1.56,-0.15,-0.06,-5.85,-1.0,-0.36,-0.04],[-0.03,-0.54,-0.03,-0.02,-8.86,-0.53,-0.51,-0.21],[-0.03,-0.61,-0.02,-0.03,-3.94,-0.98,-1.1,-0.23]],"straddles":{"2026-09-09":{"strike":615.0,"straddle":11.75,"em_pct":1.9},"2026-09-11":{"strike":615.0,"straddle":19.7,"em_pct":3.2},"2026-09-14":{"strike":615.0,"straddle":22.75,"em_pct":3.7},"2026-09-16":{"strike":615.0,"straddle":28.25,"em_pct":4.6},"2026-09-18":{"strike":615.0,"straddle":32.17,"em_pct":5.2},"2026-09-25":{"strike":615.0,"straddle":41.2,"em_pct":6.7},"2026-10-02":{"strike":615.0,"straddle":48.95,"em_pct":8.0},"2026-10-09":{"strike":615.0,"straddle":54.73,"em_pct":8.9}}},"GOOG":{"spot":335.26,"netBn":0.06,"asof":"2026-09-08","sign_ok":true,"flip":332.0,"wallPos":[360.0,29.0],"wallNeg":[330.0,-57.0],"rr25":0.9,"rr25_expiry":"2026-10-09","bucket":5,"expiries":["2026-09-11","2026-09-18","2026-09-25","2026-10-02","2026-10-09","2026-10-16","2026-10-23","2026-11-20"],"atmIv":[31.6,29.5,29.1,29.3,29.1,29.8,30.1,34.5],"strikes":[375,370,365,360,355,350,345,340,335,330,325,320,315,310,305,300,295],"grid":[[0.37,0.01,0.69,0.34,0.13,7.03,0.01,0.31],[0.26,2.44,0.83,0.5,0.12,3.8,0.01,1.13],[0.28,1.16,0.47,0.86,0.26,12.32,0.02,0.66],[2.73,6.25,1.88,1.5,0.59,6.46,0.09,2.99],[1.49,1.78,0.82,0.81,0.13,0.94,0.07,0.33],[6.31,16.53,3.17,0.92,0.09,-4.98,0.16,2.11],[5.92,0.81,2.04,0.64,0.13,7.93,-0.19,0.12],[12.19,0.32,3.78,0.7,-0.04,-4.73,0.23,-0.54],[6.62,-3.62,-0.52,0.37,-0.04,-1.7,0.06,-0.2],[-6.92,-44.24,-1.36,-0.8,-0.2,-2.89,-0.49,-1.65],[-4.22,-15.03,-1.53,-1.0,-0.11,-2.02,-0.0,-0.56],[-3.28,-4.28,-1.72,-1.11,-0.37,-7.46,-0.36,-1.66],[-1.7,-6.8,-0.84,-0.54,-0.22,-2.57,-0.02,-0.3],[-0.71,-3.64,-0.46,-0.44,-0.3,-3.46,-0.04,-1.04],[-0.05,-1.0,-0.37,-0.26,-0.18,-8.38,-0.03,-0.15],[-0.1,-2.67,-0.48,-0.46,-0.12,-2.51,-0.01,-1.41],[-0.01,-0.22,-0.04,-0.17,-0.18,-5.25,-0.0,-0.02]],"straddles":{"2026-09-11":{"strike":335.0,"straddle":7.82,"em_pct":2.3},"2026-09-18":{"strike":335.0,"straddle":13.3,"em_pct":4.0},"2026-09-25":{"strike":335.0,"straddle":17.02,"em_pct":5.1},"2026-10-02":{"strike":335.0,"straddle":20.38,"em_pct":6.1},"2026-10-09":{"strike":335.0,"straddle":23.02,"em_pct":6.9},"2026-10-16":{"strike":335.0,"straddle":25.95,"em_pct":7.7},"2026-10-23":{"strike":335.0,"straddle":28.8,"em_pct":8.6},"2026-11-20":{"strike":335.0,"straddle":41.6,"em_pct":12.4}}},"AVGO":{"spot":366.6,"netBn":0.18,"asof":"2026-09-08","sign_ok":true,"flip":358.0,"wallPos":[370.0,38.0],"wallNeg":[350.0,-26.0],"rr25":0.2,"rr25_expiry":"2026-10-09","bucket":5,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-25","2026-10-02","2026-10-09"],"atmIv":[41.9,43.8,34.8,35.2,39.4,38.6,39.2,39.0],"strikes":[410,405,400,395,390,385,380,375,370,365,360,355,350,345,340,335,330,325,320],"grid":[[0.05,0.23,0.01,0.05,4.74,0.2,0.29,0.15],[0.02,0.46,0.08,-0.02,0.5,0.19,0.2,0.17],[0.43,3.74,0.13,1.64,8.37,1.37,2.3,0.48],[0.13,1.72,0.1,0.07,1.22,0.37,0.13,0.07],[1.8,2.27,0.73,0.1,9.58,1.96,0.35,0.5],[0.5,-1.01,0.48,0.13,1.88,0.11,0.6,0.37],[26.28,8.25,0.64,0.6,16.04,0.56,0.43,0.39],[5.72,4.16,0.05,0.3,3.77,0.1,0.05,2.33],[30.98,16.97,2.46,0.57,-0.07,-0.28,0.49,0.47],[5.35,2.92,1.89,-0.11,1.9,0.13,0.24,0.04],[7.21,12.91,0.2,-0.51,-2.03,0.75,-0.77,0.09],[-0.4,-0.63,-0.13,0.21,-0.78,-0.37,0.13,0.04],[0.71,7.48,-0.08,-0.01,-15.76,-2.74,-0.29,-0.08],[-0.13,-1.68,0.09,-0.05,-8.53,-4.21,-0.29,-0.18],[-0.19,-2.24,-0.22,0.01,-6.27,-2.36,-0.44,-0.27],[-0.03,-0.52,-0.06,-0.02,-0.67,-0.48,-0.94,-0.16],[-0.06,-0.64,-0.06,-0.05,-4.58,-0.6,-1.05,-0.31],[-0.01,-0.11,-0.01,-0.03,-1.11,-0.26,-0.45,-0.18],[-0.02,-0.1,-0.02,-0.0,-4.28,-0.62,-0.45,-0.21]],"straddles":{"2026-09-09":{"strike":367.5,"straddle":6.58,"em_pct":1.8},"2026-09-11":{"strike":367.5,"straddle":12.1,"em_pct":3.3},"2026-09-14":{"strike":365.0,"straddle":14.38,"em_pct":3.9},"2026-09-16":{"strike":365.0,"straddle":17.12,"em_pct":4.7},"2026-09-18":{"strike":367.5,"straddle":19.67,"em_pct":5.4},"2026-09-25":{"strike":365.0,"straddle":25.62,"em_pct":7.0},"2026-10-02":{"strike":365.0,"straddle":29.85,"em_pct":8.1},"2026-10-09":{"strike":365.0,"straddle":34.25,"em_pct":9.3}}},"TSM":{"spot":438.12,"netBn":0.27,"asof":"2026-09-08","sign_ok":true,"flip":414.0,"wallPos":[430.0,56.0],"wallNeg":[400.0,-46.0],"rr25":0.1,"rr25_expiry":"2026-10-09","bucket":10,"expiries":["2026-09-11","2026-09-18","2026-09-25","2026-10-02","2026-10-09","2026-10-16","2026-10-23","2026-11-20"],"atmIv":[39.0,35.0,34.0,34.0,34.3,36.4,36.4,37.7],"strikes":[500,490,480,470,460,450,440,430,420,410,400,390,380],"grid":[[0.01,0.0,0.1,0.02,0.0,0.0,0.0,0.0],[0.18,1.5,0.2,0.04,0.02,1.15,0.01,0.66],[0.56,7.52,6.49,1.09,0.58,1.94,0.03,3.62],[1.93,8.73,0.66,0.28,0.15,1.42,0.03,1.13],[7.11,8.06,1.42,0.96,0.62,3.25,0.03,3.05],[8.78,15.17,0.56,0.67,0.53,9.36,0.07,2.35],[29.09,-5.06,1.75,0.97,0.94,3.62,0.06,1.8],[14.35,37.02,0.14,5.76,0.33,6.39,0.01,0.62],[9.12,-6.07,0.28,-0.7,0.06,-0.81,-0.12,1.35],[-0.35,-13.11,-0.42,-1.46,-0.03,-0.1,0.0,-0.9],[-2.34,-17.39,-3.37,-2.51,-0.92,-5.18,-0.01,0.74],[-0.74,-1.55,-0.31,-0.37,-0.14,-2.7,-0.01,-2.54],[-0.26,-0.12,-0.48,-0.18,-0.1,0.0,-0.0,0.0]],"straddles":{"2026-09-11":{"strike":437.5,"straddle":12.28,"em_pct":2.8},"2026-09-18":{"strike":437.5,"straddle":20.5,"em_pct":4.7},"2026-09-25":{"strike":440.0,"straddle":25.52,"em_pct":5.8},"2026-10-02":{"strike":440.0,"straddle":30.35,"em_pct":6.9},"2026-10-09":{"strike":440.0,"straddle":35.15,"em_pct":8.0},"2026-10-16":{"strike":440.0,"straddle":41.0,"em_pct":9.4},"2026-10-23":{"strike":440.0,"straddle":44.95,"em_pct":10.3},"2026-11-20":{"strike":440.0,"straddle":59.27,"em_pct":13.5}}},"MU":{"spot":1001.2,"netBn":0.63,"asof":"2026-09-08","sign_ok":true,"flip":905.0,"wallPos":[1000.0,103.0],"wallNeg":[920.0,-11.0],"rr25":3.1,"rr25_expiry":"2026-10-09","bucket":20,"expiries":["2026-09-09","2026-09-11","2026-09-14","2026-09-16","2026-09-18","2026-09-25","2026-10-02","2026-10-09"],"atmIv":[64.1,65.1,54.7,60.0,60.5,60.0,69.5,67.7],"strikes":[1120,1100,1080,1060,1040,1020,1000,980,960,940,920,900,880],"grid":[[0.65,3.78,0.0,0.0,4.76,0.56,2.88,0.24],[2.62,12.69,0.0,0.0,19.29,3.47,3.17,0.93],[4.74,10.2,0.0,0.0,10.38,2.31,1.16,0.06],[4.11,8.38,0.0,0.0,5.03,1.12,0.75,0.37],[35.1,32.3,0.0,0.0,23.39,3.11,3.71,0.3],[20.16,18.73,0.0,0.0,6.91,2.62,0.94,0.09],[43.88,14.96,3.11,1.03,32.54,6.18,5.3,0.78],[7.1,0.85,-0.36,-0.17,1.87,0.11,-0.01,-0.72],[-2.36,-1.11,-0.22,-0.31,4.9,4.11,2.54,1.09],[0.79,-3.25,0.18,1.04,-3.91,0.55,0.26,-0.08],[-1.82,-5.51,-0.75,-0.35,-2.8,-3.66,1.95,-0.36],[-0.23,-2.44,-0.54,-0.11,-0.72,-1.33,-0.79,-0.45],[-0.41,-2.61,-0.37,-0.26,-0.47,-2.12,-0.83,-0.14]],"straddles":{"2026-09-09":{"strike":1000.0,"straddle":27.1,"em_pct":2.7},"2026-09-11":{"strike":1000.0,"straddle":47.78,"em_pct":4.8},"2026-09-14":{"strike":1000.0,"straddle":56.47,"em_pct":5.6},"2026-09-16":{"strike":1000.0,"straddle":71.42,"em_pct":7.1},"2026-09-18":{"strike":1000.0,"straddle":80.03,"em_pct":8.0},"2026-09-25":{"strike":1000.0,"straddle":104.1,"em_pct":10.4},"2026-10-02":{"strike":1000.0,"straddle":142.35,"em_pct":14.2},"2026-10-09":{"strike":1000.0,"straddle":157.18,"em_pct":15.7}}},"SPY":{"spot":765.96,"netBn":-7.71,"asof":"2026-09-08","sign_ok":true,"flip":773.0,"wallPos":[780.0,767.0],"wallNeg":[760.0,-2589.0],"rr25":-4.3,"rr25_expiry":"2026-10-09","bucket":10,"expiries":["2026-09-09","2026-09-10","2026-09-11","2026-09-14","2026-09-15","2026-09-16","2026-09-17","2026-09-18"],"atmIv":[11.2,11.7,13.3,11.0,11.1,12.2,12.6,12.3],"strikes":[860,850,840,830,820,810,800,790,780,770,760,750,740,730,720,710,700,690,680,670],"grid":[[0.02,0.0,0.03,0.0,0.0,0.0,0.0,0.96],[0.02,0.0,0.02,0.0,0.0,0.0,0.0,1.12],[0.0,0.0,0.4,0.28,0.0,0.0,0.0,3.41],[0.01,0.0,0.38,0.12,0.0,0.0,0.0,2.96],[0.0,0.07,3.88,0.04,0.01,0.0,0.1,27.99],[0.09,0.1,3.18,0.11,0.01,0.02,0.02,14.27],[2.64,1.3,13.14,8.52,3.46,2.42,0.61,97.84],[5.4,6.18,36.62,2.96,1.03,0.52,1.77,314.2],[55.61,64.52,586.96,56.71,23.76,15.17,21.93,1178.92],[-177.41,114.2,-282.81,-19.83,12.23,-15.75,6.72,-28.02],[-277.77,-120.3,-1909.51,-46.39,-383.68,-28.57,14.18,-1886.05],[-28.99,-67.19,-211.79,-16.83,-10.35,-9.78,-1.21,-573.99],[-11.39,-8.04,-137.2,-11.22,-9.76,-6.13,-7.3,-1047.7],[-3.93,-1.43,-36.69,-0.84,-0.91,-0.41,-0.79,-458.35],[-0.86,-1.03,-11.95,-2.75,-0.55,-0.18,-0.3,-184.8],[-1.88,-0.09,-3.02,-0.04,-0.02,-0.08,-0.03,-98.24],[-1.39,-3.25,-3.52,-0.25,-0.07,-0.12,-0.43,-46.55],[-0.01,-0.02,-2.67,0.0,0.0,-0.01,-0.06,-17.13],[-0.0,-0.0,-2.42,0.0,0.0,0.0,0.0,-29.42],[-0.0,-0.0,-0.35,0.0,0.0,0.0,0.0,-25.83]],"straddles":{"2026-09-09":{"strike":766.0,"straddle":3.62,"em_pct":0.5},"2026-09-10":{"strike":766.0,"straddle":5.32,"em_pct":0.7},"2026-09-11":{"strike":766.0,"straddle":7.42,"em_pct":1.0},"2026-09-14":{"strike":765.0,"straddle":8.7,"em_pct":1.1},"2026-09-15":{"strike":765.0,"straddle":9.52,"em_pct":1.2},"2026-09-16":{"strike":765.0,"straddle":11.16,"em_pct":1.5},"2026-09-17":{"strike":765.0,"straddle":12.2,"em_pct":1.6},"2026-09-18":{"strike":766.0,"straddle":13.16,"em_pct":1.7}}}};
+  if (!DATA) return;
+  var ORDER = ['NVDA', 'MSFT', 'AAPL', 'AMZN', 'META', 'GOOG', 'AVGO', 'TSM', 'MU', 'SPY'];
+  var fmtM = function (v) { return (v > 0 ? '+' : v < 0 ? '−' : '') + '$' + Math.abs(v).toFixed(Math.abs(v) < 10 ? 1 : 0) + 'M'; };
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  function dstr(iso) { var p = iso.split('-'); return parseInt(p[2], 10) + ' ' + months[parseInt(p[1], 10) - 1]; }
+  function cellColor(v, vmax) {
+    if (vmax <= 0) return 'rgba(203,213,235,0.04)';
+    var t = Math.sqrt(Math.min(1, Math.abs(v) / vmax));
+    if (t < 0.04) return 'rgba(203,213,235,0.04)';
+    var a = (0.10 + 0.85 * t).toFixed(2);
+    return v > 0 ? 'rgba(217,168,92,' + a + ')' : 'rgba(122,162,232,' + a + ')';
+  }
+  var nav = document.getElementById('nav');
+  var root = document.getElementById('sections');
+  var tip = document.getElementById('tip');
+
+  ORDER.forEach(function (nm) {
+    var d = DATA[nm]; if (!d) return;
+    var a = document.createElement('a');
+    a.href = '#' + nm.toLowerCase(); a.textContent = nm;
+    nav.appendChild(a);
+
+    var vmax = 0;
+    d.grid.forEach(function (row) { row.forEach(function (v) { vmax = Math.max(vmax, Math.abs(v)); }); });
+    var spotIdx = 0, best = Infinity, flipIdx = -1, bestF = Infinity;
+    d.strikes.forEach(function (k, i) {
+      if (Math.abs(k - d.spot) < best) { best = Math.abs(k - d.spot); spotIdx = i; }
+      if (d.flip !== null && Math.abs(k - d.flip) < bestF) { bestF = Math.abs(k - d.flip); flipIdx = i; }
+    });
+
+    var sec = document.createElement('section');
+    sec.id = nm.toLowerCase();
+    var vsFlip = d.flip !== null ? ((d.spot / d.flip - 1) * 100) : null;
+    var head =
+      '<div class="shead"><div class="tkr"><span class="s">' + nm + '</span><span class="p">' + d.spot.toFixed(2) + '</span></div>' +
+      '<div class="facts">' +
+      '<div class="fact"><span class="label">Net GEX / 1%</span><span class="v" style="color:' + (d.netBn >= 0 ? 'var(--accent)' : 'var(--neg)') + '">' + (d.netBn > 0 ? '+' : '−') + '$' + Math.abs(d.netBn).toFixed(2) + 'bn</span></div>' +
+      '<div class="fact"><span class="label">Flip</span><span class="v">' + (d.flip === null ? '—' : d.flip + (vsFlip === null ? '' : ' · spot ' + (vsFlip >= 0 ? '+' : '−') + Math.abs(vsFlip).toFixed(1) + '%')) + '</span></div>' +
+      '<div class="fact"><span class="label">Call wall</span><span class="v">' + d.wallPos[0] + ' <span style="color:var(--faint)">(' + fmtM(d.wallPos[1]) + ')</span></span></div>' +
+      '<div class="fact"><span class="label">Put wall</span><span class="v">' + d.wallNeg[0] + ' <span style="color:var(--faint)">(' + fmtM(d.wallNeg[1]) + ')</span></span></div>' +
+      '<div class="fact"><span class="label">ATM IV front</span><span class="v">' + (d.atmIv[0] === null ? '—' : d.atmIv[0].toFixed(1) + '%') + '</span></div>' +
+      (typeof d.rr25 === 'number' ? '<div class="fact"><span class="label">25Δ RR front</span><span class="v" style="color:' + (d.rr25 < 0 ? 'var(--neg)' : 'var(--accent)') + '">' + (d.rr25 > 0 ? '+' : '') + d.rr25.toFixed(1) + '</span></div>' : '') +
+      '</div></div>';
+
+    var ehead = '<div class="ehead"><div class="klabel">k</div>' + d.expiries.map(function (e, j) {
+      return '<div class="eh"><span class="d">' + dstr(e) + '</span><span class="iv">' + (d.atmIv[j] === null ? '' : 'IV ' + d.atmIv[j].toFixed(0)) + '</span></div>';
+    }).join('') + '</div>';
+
+    var rows = d.strikes.map(function (k, i) {
+      var cells = d.grid[i].map(function (v, j) {
+        return '<div class="cell" tabindex="0" data-t="' + nm + ' · ' + k + ' × ' + dstr(d.expiries[j]) + ' — ' + fmtM(v) + ' per 1%"' +
+          ' style="background:' + cellColor(v, vmax) + '" aria-label="' + nm + ' strike ' + k + ', expiry ' + dstr(d.expiries[j]) + ', ' + fmtM(v) + '"></div>';
+      }).join('');
+      return '<div class="row' + (i === spotIdx ? ' spot' : '') + '">' +
+        '<div class="klabel' + (i === flipIdx ? ' flip' : '') + '">' + k + '</div>' + cells + '</div>';
+    }).join('');
+
+    var table = '<details><summary>Data table — ' + nm + ' (US$M per 1%)</summary><div class="dtable"><table><thead><tr><th>Strike</th>' +
+      d.expiries.map(function (e) { return '<th>' + dstr(e) + '</th>'; }).join('') + '</tr></thead><tbody>' +
+      d.strikes.map(function (k, i) {
+        return '<tr><th>' + k + '</th>' + d.grid[i].map(function (v) { return '<td>' + fmtM(v) + '</td>'; }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div></details>';
+
+    sec.innerHTML = head + '<div class="gridwrap"><div class="grid">' + ehead + rows + '</div></div>' + table +
+      '<div style="font-size:10px; color:var(--faint)">outlined row = spot · dashed gold strike = gamma flip · shading normalised to this name’s largest cell (' + fmtM(vmax) + ')</div>';
+    root.appendChild(sec);
+  });
+
+  var spy = DATA.SPY;
+  document.getElementById('notice').innerHTML = spy && spy.netBn < 0
+    ? 'Note: SPY’s own option book prints <span class="mono">−$' + Math.abs(spy.netBn).toFixed(2) + 'bn</span> net with spot below its flip (' + spy.flip + ') as of this pull — dealers in SPY are amplifying moves. The broader SPX index complex (the Cockpit strip) is the fuller market read; the two can disagree intraday.'
+    : 'Single-name gamma below; the SPX index complex on the Cockpit remains the broader market read.';
+
+  document.addEventListener('mouseover', function (e) {
+    var t = e.target.closest ? e.target.closest('.cell') : null;
+    if (t) { tip.textContent = t.getAttribute('data-t'); tip.style.display = 'block'; }
+    else tip.style.display = 'none';
+  });
+  document.addEventListener('mousemove', function (e) {
+    if (tip.style.display === 'block') {
+      var x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 10);
+      var y = Math.min(e.clientY + 14, window.innerHeight - tip.offsetHeight - 10);
+      tip.style.left = x + 'px'; tip.style.top = y + 'px';
+    }
+  });
+  document.addEventListener('focusin', function (e) {
+    var t = e.target.classList && e.target.classList.contains('cell') ? e.target : null;
+    if (t) {
+      var r = t.getBoundingClientRect();
+      tip.textContent = t.getAttribute('data-t'); tip.style.display = 'block';
+      tip.style.left = Math.min(r.left, window.innerWidth - 260) + 'px'; tip.style.top = (r.bottom + 8) + 'px';
+    }
+  });
+  document.addEventListener('focusout', function () { tip.style.display = 'none'; });
+})();
+</script>
+
+<div style="max-width:1160px;margin:0 auto;padding:0 30px 34px"><a href="./" style="font-family:ui-monospace,Consolas,monospace;font-size:12px;color:#D9A85C;text-decoration:none">&larr; Garrone Research Desk</a></div>
+</body>
+</html>
